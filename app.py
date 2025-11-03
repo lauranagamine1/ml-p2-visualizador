@@ -2,7 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
-import streamlit as st
+import app as st
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
 import plotly.express as px
