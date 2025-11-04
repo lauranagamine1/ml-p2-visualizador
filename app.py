@@ -17,6 +17,8 @@ DEF_JOINED = os.path.join(BASE_DIR, "data", "movies_streamlit_joined.csv")
 
 # === Barra lateral: uploader cuando falten archivos ===
 st.sidebar.header("📂 Cargar datos")
+st.sidebar.markdown("**Descargar CSVs de aquí:** [Google Drive](https://drive.google.com/drive/folders/1ZzxcywyE2uSHoO49HL4kT7TBWmdt5anD)")
+
 up_feats = None
 up_joined = None
 
