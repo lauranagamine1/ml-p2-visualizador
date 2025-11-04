@@ -2,7 +2,7 @@
 import os
 import numpy as np
 import pandas as pd
-import app as st
+import streamlit as st
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
 import plotly.express as px
@@ -70,14 +70,34 @@ def enrich_with_meta(df_ids: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def title_for_id(mid):
-    if not title_map: return None
+    if not title_map:
+        return None
     try:
         return title_map.get(int(mid))
     except Exception:
         return None
 
+def build_poster_items(ids):
+    """Devuelve lista de dicts con movieId, Title y Poster solo para los IDs con poster válido."""
+    items = []
+    if not poster_map:
+        return items
+    for mid in ids:
+        try:
+            pid = int(mid)
+        except Exception:
+            continue
+        poster = poster_map.get(pid)
+        if poster and isinstance(poster, str) and len(poster.strip()) > 0:
+            items.append({
+                "movieId": pid,
+                "Title": title_map.get(pid) if title_map else None,
+                "Poster": poster
+            })
+    return items
+
 # ====== UI ======
-st.title("🎬 Movie Explorer (búsqueda por ID o Título)")
+st.title("🎬 Movie Explorer")
 
 # Filtros de cluster + top-N
 colf1, colf2 = st.columns([1,1])
@@ -102,11 +122,12 @@ if title_map:
     seen = set()
     view_titles = [t for t in view_titles if not (t in seen or seen.add(t))]
 
-# (a) Búsqueda por similitud (ID o Título)
+# (a) Búsqueda por similitud (ID, Título o Póster)
 st.subheader("a) Búsqueda por similitud")
-mode = st.radio("Modo de búsqueda", ["Por movieId", "Por Title"], horizontal=True)
+mode = st.radio("Modo de búsqueda", ["Por movieId", "Por Title", "Por Poster"], horizontal=True)
 
 query_id = None
+
 if mode == "Por movieId":
     colid1, colid2 = st.columns([2,1])
     with colid1:
@@ -129,7 +150,7 @@ if mode == "Por movieId":
     elif len(view_ids) > 0:
         query_id = chosen_from_list
 
-else:  # Por Title
+elif mode == "Por Title":
     colt1, colt2 = st.columns([2,1])
     with colt1:
         q_title = st.text_input("Título exacto (o elige de la lista):", "")
@@ -142,15 +163,41 @@ else:  # Por Title
 
     title_to_use = q_title.strip() if q_title.strip() else (chosen_title if view_titles else None)
     if title_to_use and title_map:
-        # Encontrar un movieId cuyo título coincida (preferimos IDs dentro del filtro actual)
         candidate_ids = [mid for mid in view_ids if title_for_id(mid) == title_to_use]
         if not candidate_ids:
-            # como fallback, buscar en todo el mapa
             candidate_ids = [mid for mid, t in title_map.items() if t == title_to_use]
         if candidate_ids:
             query_id = candidate_ids[0]
         else:
             st.warning("No se encontró ese título.")
+
+else:  # Por Poster
+    st.caption("Selecciona un póster de la galería filtrada por clusters.")
+    poster_items = build_poster_items(view_ids)
+    if not poster_items:
+        st.info("No hay pósters disponibles para los IDs filtrados.")
+    else:
+        # Configuración de la galería
+        max_items = st.slider("Cuántos pósters mostrar", 12, 120, 48, 6)
+        ncols = st.slider("Columnas", 3, 8, 6, 1)
+
+        # Render en grid
+        rows = (min(len(poster_items), max_items) + ncols - 1) // ncols
+        shown = 0
+        for r in range(rows):
+            cols = st.columns(ncols, gap="small")
+            for c in range(ncols):
+                if shown >= max_items or shown >= len(poster_items):
+                    break
+                item = poster_items[shown]
+                with cols[c]:
+                    st.image(item["Poster"], use_container_width=True)
+                    label = item["Title"] or f"ID {item['movieId']}"
+                    if st.button(label, key=f"pick_{item['movieId']}"):
+                        query_id = item["movieId"]
+                shown += 1
+        if query_id is None:
+            st.info("Haz click en el botón debajo del póster para seleccionarlo.")
 
 # Ejecutar kNN si tenemos query_id
 if query_id is not None:
@@ -183,7 +230,7 @@ if query_id is not None:
             }
         )
 else:
-    st.info("Ingresa un movieId o un Title (o elige de las listas) para ver similares.")
+    st.info("Ingresa un movieId, un Title o selecciona un póster para ver similares.")
 
 # (b) Representantes por cluster (con metadata)
 st.subheader("b) Representantes por cluster")
