@@ -1,5 +1,6 @@
 # streamlit_app.py
 import os
+import io
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -9,29 +10,51 @@ import plotly.express as px
 
 st.set_page_config(page_title="Recomendación de películas", layout="wide")
 
-# === Rutas por defecto (sin barra lateral) ===
+# === Rutas por defecto ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_FEATS  = os.path.join(BASE_DIR, "data", "movies_streamlit.csv")
-CSV_JOINED = os.path.join(BASE_DIR, "data", "movies_streamlit_joined.csv")
+DEF_FEATS  = os.path.join(BASE_DIR, "data", "movies_streamlit.csv")
+DEF_JOINED = os.path.join(BASE_DIR, "data", "movies_streamlit_joined.csv")
+
+# === Barra lateral: uploader cuando falten archivos ===
+st.sidebar.header("📂 Cargar datos")
+up_feats = None
+up_joined = None
+
+if not os.path.exists(DEF_FEATS):
+    st.sidebar.warning("No encontré 'movies_streamlit.csv'. Súbelo aquí:")
+    up_feats = st.sidebar.file_uploader("movies_streamlit.csv", type=["csv"], key="feats")
+
+if not os.path.exists(DEF_JOINED):
+    st.sidebar.info("Opcional: sube 'movies_streamlit_joined.csv' (para Título/Poster/Genre):")
+    up_joined = st.sidebar.file_uploader("movies_streamlit_joined.csv", type=["csv"], key="joined")
 
 # --- Cargar CSV base (features) ---
-if not os.path.exists(CSV_FEATS):
-    st.error(f"No encuentro el archivo: {CSV_FEATS}")
-    st.stop()
+if os.path.exists(DEF_FEATS):
+    df = pd.read_csv(DEF_FEATS)
+else:
+    if up_feats is None:
+        st.error(f"No encuentro el archivo ni se subió 'movies_streamlit.csv'.")
+        st.stop()
+    df = pd.read_csv(io.BytesIO(up_feats.getvalue()))
 
-df = pd.read_csv(CSV_FEATS)
 required = {"movieId", "cluster"}
 missing = required - set(df.columns)
 if missing:
     st.error(f"Faltan columnas requeridas en el CSV de features: {missing}")
     st.stop()
 
-# --- Cargar CSV joined (metadata) ---
-if not os.path.exists(CSV_JOINED):
-    st.warning(f"No encuentro el archivo joined: {CSV_JOINED}. Se mostrará solo ID/cluster.")
-    joined_meta = None
+# --- Cargar CSV joined (metadata) (opcional) ---
+if os.path.exists(DEF_JOINED):
+    joined_meta = pd.read_csv(DEF_JOINED)
+elif up_joined is not None:
+    joined_meta = pd.read_csv(io.BytesIO(up_joined.getvalue()))
 else:
-    joined_meta = pd.read_csv(CSV_JOINED)
+    st.warning("No se encontró/cargó 'movies_streamlit_joined.csv'. Se mostrará solo ID/cluster.")
+    joined_meta = None
+
+# Detectar columna de ID en joined (si existe)
+id_meta_col = None
+if joined_meta is not None:
     id_candidates = ["movieId", "movieId_ms", "movieid", "movieid_ms"]
     id_meta_col = next((c for c in id_candidates if c in joined_meta.columns), None)
     if id_meta_col is None:
@@ -191,7 +214,7 @@ else:  # Por Poster
                     break
                 item = poster_items[shown]
                 with cols[c]:
-                    st.image(item["Poster"], use_container_width=True)
+                    st.image(item["Poster"], use_column_width=True)
                     label = item["Title"] or f"ID {item['movieId']}"
                     if st.button(label, key=f"pick_{item['movieId']}"):
                         query_id = item["movieId"]
@@ -225,7 +248,7 @@ if query_id is not None:
                 "Poster": st.column_config.ImageColumn(
                     "Poster",
                     help="Vista previa",
-                    width="large"  # más grande en (a)
+                    width="large"
                 )
             }
         )
